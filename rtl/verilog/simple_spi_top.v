@@ -34,16 +34,19 @@
 
 //  CVS Log
 //
-//  $Id: simple_spi_top.v,v 1.3 2003-01-09 16:47:59 rherveille Exp $
+//  $Id: simple_spi_top.v,v 1.4 2003-08-01 11:41:54 rherveille Exp $
 //
-//  $Date: 2003-01-09 16:47:59 $
-//  $Revision: 1.3 $
+//  $Date: 2003-08-01 11:41:54 $
+//  $Revision: 1.4 $
 //  $Author: rherveille $
 //  $Locker:  $
 //  $State: Exp $
 //
 // Change History:
 //               $Log: not supported by cvs2svn $
+//               Revision 1.3  2003/01/09 16:47:59  rherveille
+//               Updated clkcnt size and decoding due to new SPR bit assignments.
+//
 //               Revision 1.2  2003/01/07 13:29:52  rherveille
 //               Changed SPR bits coding.
 //
@@ -97,20 +100,19 @@ module simple_spi_top(
   reg  [7:0] spcr;       // Serial Peripheral Control Register ('HC11 naming)
   wire [7:0] spsr;       // Serial Peripheral Status register ('HC11 naming)
   reg  [7:0] sper;       // Serial Peripheral Extension register
-  reg  [7:0] treg;       // Transfer register
+  reg  [7:0] treg, rreg; // Transmit/Receive register
 
   // fifo signals
   wire [7:0] rfdout;
   reg        wfre, rfwe;
   wire       rfre, rffull, rfempty;
-  wire [7:0] wfdin, wfdout;
+  wire [7:0] wfdout;
   wire       wfwe, wffull, wfempty;
 
   // misc signals
-  wire tirq;     // transfer interrupt (selected number of transfers done)
-  wire wfov;     // write fifo overrun (writing while fifo full)
-  reg  state;    // statemachine state
-  reg  ena_mosi; // mosi_o clock-enable
+  wire      tirq;     // transfer interrupt (selected number of transfers done)
+  wire      wfov;     // write fifo overrun (writing while fifo full)
+  reg [1:0] state;    // statemachine state
   reg [2:0] bcnt;
 
   //
@@ -235,98 +237,99 @@ module simple_spi_top(
   // generate clk divider
   reg [10:0] clkcnt;
   always @(posedge clk_i)
-    if(~spe)
-        clkcnt <= #1 11'h0;
-    else if (|clkcnt & state)
-        clkcnt <= #1 clkcnt - 11'h1;
+    if(spe & (|clkcnt & |state))
+      clkcnt <= #1 clkcnt - 11'h1;
     else
-        case (espr) // synopsys full_case parallel_case
-          4'b0000: clkcnt <= #1 11'h0;   // 2   -- original M68HC11 coding
-          4'b0001: clkcnt <= #1 11'h1;   // 4   -- original M68HC11 coding
-          4'b0010: clkcnt <= #1 11'h7;   // 16  -- original M68HC11 coding
-          4'b0011: clkcnt <= #1 11'hf;   // 32  -- original M68HC11 coding
-          4'b0100: clkcnt <= #1 11'h3;   // 8
-          4'b0101: clkcnt <= #1 11'h1f;  // 64
-          4'b0110: clkcnt <= #1 11'h3f;  // 128
-          4'b0111: clkcnt <= #1 11'h7f;  // 256
-          4'b1000: clkcnt <= #1 11'hff;  // 512
-          4'b1001: clkcnt <= #1 11'h1ff; // 1024
-          4'b1010: clkcnt <= #1 11'h3ff; // 2048
-          4'b1011: clkcnt <= #1 11'h7ff; // 4096
-        endcase
+      case (espr) // synopsys full_case parallel_case
+        4'b0000: clkcnt <= #1 11'h0;   // 2   -- original M68HC11 coding
+        4'b0001: clkcnt <= #1 11'h1;   // 4   -- original M68HC11 coding
+        4'b0010: clkcnt <= #1 11'h7;   // 16  -- original M68HC11 coding
+        4'b0011: clkcnt <= #1 11'hf;   // 32  -- original M68HC11 coding
+        4'b0100: clkcnt <= #1 11'h3;   // 8
+        4'b0101: clkcnt <= #1 11'h1f;  // 64
+        4'b0110: clkcnt <= #1 11'h3f;  // 128
+        4'b0111: clkcnt <= #1 11'h7f;  // 256
+        4'b1000: clkcnt <= #1 11'hff;  // 512
+        4'b1001: clkcnt <= #1 11'h1ff; // 1024
+        4'b1010: clkcnt <= #1 11'h3ff; // 2048
+        4'b1011: clkcnt <= #1 11'h7ff; // 4096
+      endcase
 
-  // generate internal SCK
-  reg sck;
-  always @(posedge clk_i)
-    if (~spe)
-      sck <= #1 1'b0;
-    else
-      sck <= #1 sck ^ ~(|clkcnt);
+  // generate clock enable signal
+  wire ena = ~|clkcnt;
 
   // generate SCK_O
-  reg sck_o;
+  reg sck, sck_o;
   always @(posedge clk_i)
     sck_o <= #1 sck ^ cpol;
 
-  // generate clock-enable signal
-  reg ena;
-  always @(posedge clk_i)
-    ena <= #1 ~(|clkcnt) & (~sck ^ cpha);
-
   // generate ena_mosi (clock data in)
-  reg hold_ena;
-  always @(posedge clk_i or negedge rst_i)
-    if(~rst_i)
-      hold_ena <= #1 1'b0;
+  reg ena_mosi;
+  always @(posedge clk_i)
+    if (~spe)
+      ena_mosi <= #1 1'b0;
     else
-      hold_ena <= state & (ena | hold_ena) & ~ena_mosi;
+      ena_mosi <= #1 ena & (sck ^ cpha);
 
-  always @(posedge clk_i)
-    ena_mosi <= #1 ~(|clkcnt) & hold_ena;
-
-  // store miso
-  reg smiso;
-  always @(posedge clk_i)
-    if(ena)
-      smiso <= #1 miso_i;
 
   // transfer statemachine
   //reg [2:0] bcnt; // bit count
   always @(posedge clk_i)
     if (~spe)
       begin
-          state <= #1 1'b0; // idle
+          state <= #1 2'b00; // idle
           bcnt  <= #1 3'h0;
           treg  <= #1 8'h00;
           wfre  <= #1 1'b0;
           rfwe  <= #1 1'b0;
+          sck   <= #1 1'b0;
       end
     else
       begin
          wfre <= #1 1'b0;
          rfwe <= #1 1'b0;
 
-         if(~state) // idle
-         begin
-             bcnt <= #1 3'h7;   // set transfer counter
-             treg <= #1 wfdout; // load transfer register
-             if (~wfempty)
-             begin
-                 state <= #1 1'b1; // goto transfer state
-                 wfre  <= #1 1'b1;
-             end
-         end
+         case (state) //synopsys full_case parallel_case
+           2'b00: // idle state
+              begin
+                  bcnt <= #1 3'h7;   // set transfer counter
+                  treg <= #1 wfdout; // load transfer register
+                  if (~wfempty) begin
+                    wfre  <= #1 1'b1;
 
-         if(state & ena_mosi)
-         begin
-             treg <= #1 {treg[6:0], smiso}; //miso_i};
-             bcnt <= #1 bcnt -3'h1;
-             if (~|bcnt)
-             begin
-                 state <= #1 1'b0; // goto idle state
-                 rfwe  <= #1 1'b1;
-             end
-         end
+                    if (cpha) begin
+                      sck   <= #1 1'b1;
+                      state <= #1 2'b10;
+                    end else
+                      state <= #1 2'b01;
+
+                  end
+              end
+
+           2'b01: // setup data when CPHA = '1'
+              if (ena) begin
+                state <= #1 2'b10;
+                sck   <= #1 1'b1;
+              end
+
+           2'b10:
+              begin
+                  if (ena & ~(cpha & ~sck & ~|bcnt)) begin
+                    sck <= #1 ~sck;
+                  end
+
+                  if (ena_mosi) begin
+                    treg <= #1 {treg[6:0], miso_i};
+                    bcnt <= #1 bcnt -3'h1;
+                    if (~|bcnt) begin
+                      state <= #1 2'b00;
+                      rfwe  <= #1 1'b1;
+                    end
+                  end
+              end
+
+           2'b11: state <= #1 2'b00;
+         endcase
       end
 
   assign mosi_o = treg[7];
