@@ -34,16 +34,19 @@
 
 //  CVS Log
 //
-//  $Id: simple_spi_top.v,v 1.2 2003-01-07 13:29:52 rherveille Exp $
+//  $Id: simple_spi_top.v,v 1.3 2003-01-09 16:47:59 rherveille Exp $
 //
-//  $Date: 2003-01-07 13:29:52 $
-//  $Revision: 1.2 $
+//  $Date: 2003-01-09 16:47:59 $
+//  $Revision: 1.3 $
 //  $Author: rherveille $
 //  $Locker:  $
 //  $State: Exp $
 //
 // Change History:
 //               $Log: not supported by cvs2svn $
+//               Revision 1.2  2003/01/07 13:29:52  rherveille
+//               Changed SPR bits coding.
+//
 //               Revision 1.1.1.1  2002/12/22 16:07:15  rherveille
 //               Initial release
 //
@@ -230,26 +233,26 @@ module simple_spi_top(
 
   //
   // generate clk divider
-  reg [9:0] clkcnt;
+  reg [10:0] clkcnt;
   always @(posedge clk_i)
     if(~spe)
-        clkcnt <= #1 10'h0;
+        clkcnt <= #1 11'h0;
     else if (|clkcnt & state)
-        clkcnt <= #1 clkcnt - 10'h1;
+        clkcnt <= #1 clkcnt - 11'h1;
     else
         case (espr) // synopsys full_case parallel_case
-          4'b0000: clkcnt <= #1 10'h0;   // 2   -- original M68HC11 coding
-          4'b0001: clkcnt <= #1 10'h1;   // 4   -- original M68HC11 coding
-          4'b0010: clkcnt <= #1 10'h7;   // 16  -- original M68HC11 coding
-          4'b0011: clkcnt <= #1 10'hf;   // 32  -- original M68HC11 coding
-          4'b0100: clkcnt <= #1 10'h3;   // 8
-          4'b0101: clkcnt <= #1 10'h1f;  // 64
-          4'b0110: clkcnt <= #1 10'h3f;  // 128
-          4'b0111: clkcnt <= #1 10'h7f;  // 256
-          4'b1000: clkcnt <= #1 10'hff;  // 512
-          4'b1001: clkcnt <= #1 10'h1ff; // 1024
-          4'b1010: clkcnt <= #1 10'h3ff; // 2048
-          4'b1011: clkcnt <= #1 10'h7ff; // 4096
+          4'b0000: clkcnt <= #1 11'h0;   // 2   -- original M68HC11 coding
+          4'b0001: clkcnt <= #1 11'h1;   // 4   -- original M68HC11 coding
+          4'b0010: clkcnt <= #1 11'h7;   // 16  -- original M68HC11 coding
+          4'b0011: clkcnt <= #1 11'hf;   // 32  -- original M68HC11 coding
+          4'b0100: clkcnt <= #1 11'h3;   // 8
+          4'b0101: clkcnt <= #1 11'h1f;  // 64
+          4'b0110: clkcnt <= #1 11'h3f;  // 128
+          4'b0111: clkcnt <= #1 11'h7f;  // 256
+          4'b1000: clkcnt <= #1 11'hff;  // 512
+          4'b1001: clkcnt <= #1 11'h1ff; // 1024
+          4'b1010: clkcnt <= #1 11'h3ff; // 2048
+          4'b1011: clkcnt <= #1 11'h7ff; // 4096
         endcase
 
   // generate internal SCK
