@@ -34,16 +34,19 @@
 
 //  CVS Log
 //
-//  $Id: simple_spi_top.v,v 1.4 2003-08-01 11:41:54 rherveille Exp $
+//  $Id: simple_spi_top.v,v 1.5 2004-02-28 15:59:50 rherveille Exp $
 //
-//  $Date: 2003-08-01 11:41:54 $
-//  $Revision: 1.4 $
+//  $Date: 2004-02-28 15:59:50 $
+//  $Revision: 1.5 $
 //  $Author: rherveille $
 //  $Locker:  $
 //  $State: Exp $
 //
 // Change History:
 //               $Log: not supported by cvs2svn $
+//               Revision 1.4  2003/08/01 11:41:54  rherveille
+//               Fixed some timing bugs.
+//
 //               Revision 1.3  2003/01/09 16:47:59  rherveille
 //               Updated clkcnt size and decoding due to new SPR bit assignments.
 //
@@ -68,31 +71,23 @@
 // synopsys translate_on
 
 module simple_spi_top(
-  clk_i, rst_i, cyc_i, stb_i, adr_i, we_i, dat_i, dat_o, ack_o,
-  inta_o,
-  sck_o, mosi_o, miso_i
-);
-
-  //
-  // Inputs & outputs
-  //
-
   // 8bit WISHBONE bus slave interface
-  input        clk_i;         // clock
-  input        rst_i;         // reset (asynchronous active low)
-  input        cyc_i;         // cycle
-  input        stb_i;         // strobe
-  input  [1:0] adr_i;         // address
-  input        we_i;          // write enable
-  input  [7:0] dat_i;         // data output
-  output [7:0] dat_o;         // data input
-  output       ack_o;         // normal bus termination
-  output       inta_o;        // interrupt output
+  input  wire       clk_i,         // clock
+  input  wire       rst_i,         // reset (asynchronous active low)
+  input  wire       cyc_i,         // cycle
+  input  wire       stb_i,         // strobe
+  input  wire [1:0] adr_i,         // address
+  input  wire       we_i,          // write enable
+  input  wire [7:0] dat_i,         // data input
+  output reg  [7:0] dat_o,         // data output
+  output reg        ack_o,         // normal bus termination
+  output reg        inta_o,        // interrupt output
 
   // SPI port
-  output       sck_o;         // serial clock output
-  output       mosi_o;        // MasterOut SlaveIN
-  input        miso_i;        // MasterIn SlaveOut
+  output reg        sck_o,         // serial clock output
+  output wire       mosi_o,        // MasterOut SlaveIN
+  input  wire       miso_i         // MasterIn SlaveOut
+);
 
   //
   // Module body
@@ -141,7 +136,6 @@ module simple_spi_top(
   assign wfov = wfwe & wffull;
 
   // dat_o
-  reg [7:0] dat_o;
   always @(posedge clk_i)
     case(adr_i) // synopsys full_case parallel_case
       2'b00: dat_o <= #1 spcr;
@@ -154,7 +148,6 @@ module simple_spi_top(
   assign rfre = wb_acc & (adr_i == 2'b10) & ack_o & ~we_i;
 
   // ack_o
-  reg ack_o;
   always @(posedge clk_i or negedge rst_i)
     if (~rst_i)
       ack_o <= #1 1'b0;
@@ -203,7 +196,6 @@ module simple_spi_top(
   
 
   // generate IRQ output (inta_o)
-  reg inta_o;
   always @(posedge clk_i)
     inta_o <= #1 spif & spie;
 
@@ -235,45 +227,30 @@ module simple_spi_top(
 
   //
   // generate clk divider
-  reg [10:0] clkcnt;
+  reg [11:0] clkcnt;
   always @(posedge clk_i)
     if(spe & (|clkcnt & |state))
       clkcnt <= #1 clkcnt - 11'h1;
     else
       case (espr) // synopsys full_case parallel_case
-        4'b0000: clkcnt <= #1 11'h0;   // 2   -- original M68HC11 coding
-        4'b0001: clkcnt <= #1 11'h1;   // 4   -- original M68HC11 coding
-        4'b0010: clkcnt <= #1 11'h7;   // 16  -- original M68HC11 coding
-        4'b0011: clkcnt <= #1 11'hf;   // 32  -- original M68HC11 coding
-        4'b0100: clkcnt <= #1 11'h3;   // 8
-        4'b0101: clkcnt <= #1 11'h1f;  // 64
-        4'b0110: clkcnt <= #1 11'h3f;  // 128
-        4'b0111: clkcnt <= #1 11'h7f;  // 256
-        4'b1000: clkcnt <= #1 11'hff;  // 512
-        4'b1001: clkcnt <= #1 11'h1ff; // 1024
-        4'b1010: clkcnt <= #1 11'h3ff; // 2048
-        4'b1011: clkcnt <= #1 11'h7ff; // 4096
+        4'b0000: clkcnt <= #1 12'h0;   // 2   -- original M68HC11 coding
+        4'b0001: clkcnt <= #1 12'h1;   // 4   -- original M68HC11 coding
+        4'b0010: clkcnt <= #1 12'h3;   // 16  -- original M68HC11 coding
+        4'b0011: clkcnt <= #1 12'hf;   // 32  -- original M68HC11 coding
+        4'b0100: clkcnt <= #1 12'h1f;  // 8
+        4'b0101: clkcnt <= #1 12'h7;   // 64
+        4'b0110: clkcnt <= #1 12'h3f;  // 128
+        4'b0111: clkcnt <= #1 12'h7f;  // 256
+        4'b1000: clkcnt <= #1 12'hff;  // 512
+        4'b1001: clkcnt <= #1 12'h1ff; // 1024
+        4'b1010: clkcnt <= #1 12'h3ff; // 2048
+        4'b1011: clkcnt <= #1 12'h7ff; // 4096
       endcase
 
   // generate clock enable signal
   wire ena = ~|clkcnt;
 
-  // generate SCK_O
-  reg sck, sck_o;
-  always @(posedge clk_i)
-    sck_o <= #1 sck ^ cpol;
-
-  // generate ena_mosi (clock data in)
-  reg ena_mosi;
-  always @(posedge clk_i)
-    if (~spe)
-      ena_mosi <= #1 1'b0;
-    else
-      ena_mosi <= #1 ena & (sck ^ cpha);
-
-
   // transfer statemachine
-  //reg [2:0] bcnt; // bit count
   always @(posedge clk_i)
     if (~spe)
       begin
@@ -282,7 +259,7 @@ module simple_spi_top(
           treg  <= #1 8'h00;
           wfre  <= #1 1'b0;
           rfwe  <= #1 1'b0;
-          sck   <= #1 1'b0;
+          sck_o <= #1 1'b0;
       end
     else
       begin
@@ -292,43 +269,39 @@ module simple_spi_top(
          case (state) //synopsys full_case parallel_case
            2'b00: // idle state
               begin
-                  bcnt <= #1 3'h7;   // set transfer counter
-                  treg <= #1 wfdout; // load transfer register
+                  bcnt  <= #1 3'h7;   // set transfer counter
+                  treg  <= #1 wfdout; // load transfer register
+                  sck_o <= #1 cpol;   // set sck
+
                   if (~wfempty) begin
                     wfre  <= #1 1'b1;
-
-                    if (cpha) begin
-                      sck   <= #1 1'b1;
-                      state <= #1 2'b10;
-                    end else
-                      state <= #1 2'b01;
-
+                    state <= #1 2'b01;
+                    if (cpha) sck_o <= #1 ~sck_o;
                   end
               end
 
-           2'b01: // setup data when CPHA = '1'
+           2'b01: // clock-phase2, next data
               if (ena) begin
-                state <= #1 2'b10;
-                sck   <= #1 1'b1;
+                sck_o   <= #1 ~sck_o;
+                state   <= #1 2'b11;
               end
 
-           2'b10:
-              begin
-                  if (ena & ~(cpha & ~sck & ~|bcnt)) begin
-                    sck <= #1 ~sck;
-                  end
+           2'b11: // clock phase1
+              if (ena) begin
+                treg <= #1 {treg[6:0], miso_i};
+                bcnt <= #1 bcnt -3'h1;
 
-                  if (ena_mosi) begin
-                    treg <= #1 {treg[6:0], miso_i};
-                    bcnt <= #1 bcnt -3'h1;
-                    if (~|bcnt) begin
-                      state <= #1 2'b00;
-                      rfwe  <= #1 1'b1;
-                    end
-                  end
+                if (~|bcnt) begin
+                  state <= #1 2'b00;
+                  sck_o <= #1 cpol;
+                  rfwe  <= #1 1'b1;
+                end else begin
+                  state <= #1 2'b01;
+                  sck_o <= #1 ~sck_o;
+                end
               end
 
-           2'b11: state <= #1 2'b00;
+           2'b10: state <= #1 2'b00;
          endcase
       end
 
